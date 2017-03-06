@@ -1,23 +1,22 @@
 #include <iostream>
 #include <math.h>
 
-// function to add the elements of two arrays
-// CUDA Kernel function to add the elements of two arrays on the GPU
+// Kernel function to add the elements of two arrays
 __global__
 void add(int n, float *x, float *y)
 {
-  for (int i = 0; i < n; i++)
-      y[i] = x[i] + y[i];
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
+  int stride = blockDim.x * gridDim.x;
+  for (int i = index; i < n; i += stride)
+    y[i] = x[i] + y[i];
 }
 
 int main(void)
 {
-  int N = 1<<20; // 1M elements
-
-  // float *x = new float[N];
-  // float *y = new float[N];
-  // Allocate Unified Memory -- accessible from CPU or GPU
+  int N = 1<<20;
   float *x, *y;
+
+  // Allocate Unified Memory – accessible from CPU or GPU
   cudaMallocManaged(&x, N*sizeof(float));
   cudaMallocManaged(&y, N*sizeof(float));
 
@@ -27,9 +26,13 @@ int main(void)
     y[i] = 2.0f;
   }
 
-  // Run kernel on 1M elements on the CPU
-  // add(N, x, y);
-  add<<<1, 1>>>(N, x, y);
+  // Run kernel on 1M elements on the GPU
+  int blockSize = 256;
+  int numBlocks = (N + blockSize - 1) / blockSize;
+  add<<<numBlocks, blockSize>>>(N, x, y);
+
+  // Wait for GPU to finish before accessing on host
+  cudaDeviceSynchronize();
 
   // Check for errors (all values should be 3.0f)
   float maxError = 0.0f;
@@ -38,8 +41,6 @@ int main(void)
   std::cout << "Max error: " << maxError << std::endl;
 
   // Free memory
-  // delete [] x;
-  // delete [] y;
   cudaFree(x);
   cudaFree(y);
 
